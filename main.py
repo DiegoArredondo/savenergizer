@@ -14,14 +14,6 @@ cred = credentials.Certificate("serviceAccountKey.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-gotData = False
-P1 = False
-P2 = False
-P3 = False
-P4 = False
-P5 = False
-P6 = False
-
 ################################
 ##### MQTT STUFF ###############
 ################################
@@ -32,69 +24,13 @@ client = mqtt.Client()
 ##### DB LISTENER ##############
 ################################
 def onPortStateChange(doc_snapshot, changes, read_time):
-    for doc in doc_snapshot:
-        print(u'Received document snapshot: {}'.format(doc.id))
-        for change in changes:
-            if change.type.name == 'MODIFIED':
-                if not gotData:
-                    if(doc.id == "port1"):
-                        P1 = doc.to_dict()['state']
-                        break
-                    elif(doc.id == "port2"):
-                        P2 = doc.to_dict()['state']
-                        break
-                    elif(doc.id == "port3"):
-                        P3 = doc.to_dict()['state']
-                        break
-                    elif(doc.id == "port4"):
-                        P4 = doc.to_dict()['state']
-                        break
-                    elif(doc.id == "port5"):
-                        P5 = doc.to_dict()['state']
-                        break
-                    elif(doc.id == "port6"):
-                        P6 = doc.to_dict()['state']
-                        gotData = True
-                        break
-
-                updated = False
-                porToUpdate = "none"
-                doc = change.document
-                print('{}-{}'.format(doc.id, doc.to_dict()['state']))
-                if not gotData:
-                    if (doc.id == "port1"):
-                        if doc.to_dict()['state'] != P1:
-                            P1 = doc.to_dict()['state']
-                            different = True
-                        break
-                    elif (doc.id == "port2"):
-                        if doc.to_dict()['state'] != P2:
-                            P2 = doc.to_dict()['state']
-                            different = True
-                        break
-                    elif (doc.id == "port3"):
-                        if doc.to_dict()['state'] != P3:
-                            P3 = doc.to_dict()['state']
-                            different = True
-                        break
-                    elif (doc.id == "port4"):
-                        if doc.to_dict()['state'] != P4:
-                            P4 = doc.to_dict()['state']
-                            different = True
-                        break
-                    elif (doc.id == "port5"):
-                        if doc.to_dict()['state'] != P5:
-                            P5 = doc.to_dict()['state']
-                            different = True
-                        break
-                    elif (doc.id == "port6"):
-                        if doc.to_dict()['state'] != P6:
-                            P6 = doc.to_dict()['state']
-                            different = True
-                        gotData = True
-                        break
-                if different:
-                    client.publish('states', '{}-{}'.format(doc.id, doc.to_dict()['state']))
+    for change in changes:
+        if change.type.name == 'MODIFIED':
+            doc = change.document
+            print(u'Received document snapshot: {}'.format(doc.id))
+            doc = change.document
+            print('CHANGING PORT STATE: {}-{}'.format(doc.id, doc.to_dict()['state']))
+            client.publish('states', '{}-{}'.format(doc.id, doc.to_dict()['state']))
 
 
 ################################
@@ -105,7 +41,8 @@ def saveData(d):
         return
     data = int(d)
     ts = time.time()
-    if dataQuality(data):
+    #if dataQuality(data):
+    if True:
         print(u'Received temperature: {} at {}'.format(data, ts))
         doc = db.collection('sensorReadings').document(str(ts).split(".")[0]) .set({
             'value': data,
@@ -178,7 +115,7 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     print(f"Received data: {msg.topic} - {str(msg.payload)}")
-    #saveData(str(msg.payload).split("'")[1])
+    saveData(str(msg.payload).split("'")[1])
 
 def on_publish(client, obj, mid):
     print("Sent data: " + str(mid))
@@ -187,18 +124,19 @@ def on_subscribe(client, obj, mid, granted_qos):
     print("Subscribed: " + str(client))
 
 
-#db.collection(u'portStates').on_snapshot(onPortStateChange)
+print("perra")
+db.collection(u'portStates').on_snapshot(onPortStateChange)
 client.on_connect = on_connect
 client.on_message = on_message
 client.on_subscribe = on_subscribe
-client.on_publish = on_publish
+#client.on_publish = on_publish
 client.connect("localhost", 1883, 60)
-client.publish("states", "port1-off")
-client.publish("states", "port2-off")
-client.publish("states", "port3-off")
-client.publish("states", "port4-off")
-client.publish("states", "port5-off")
-client.publish("states", "port6-off")
+client.publish("states", "port1-on")
+client.publish("states", "port2-on")
+client.publish("states", "port3-on")
+client.publish("states", "port4-on")
+client.publish("states", "port5-on")
+client.publish("states", "port6-on")
 client.loop_forever()
 
 
