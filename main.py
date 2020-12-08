@@ -3,7 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import statistics
 import smtplib
-import time
+import datetime
 import json
 
 
@@ -40,9 +40,8 @@ def saveData(d):
     if d == "%d":
         return
     data = int(d)
-    ts = time.time()
-    #if dataQuality(data):
-    if True:
+    ts = datetime.datetime.now()
+    if dataQuality(data):
         print(u'Received temperature: {} at {}'.format(data, ts))
         doc = db.collection('sensorReadings').document(str(ts).split(".")[0]) .set({
             'value': data,
