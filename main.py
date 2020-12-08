@@ -5,6 +5,10 @@ import statistics
 import smtplib
 import time
 import json
+import numpy as np
+from sklearn.linear_model import LinearRegression
+import datetime
+import requests
 
 
 ################################
@@ -41,8 +45,7 @@ def saveData(d):
         return
     data = int(d)
     ts = time.time()
-    #if dataQuality(data):
-    if True:
+    if dataQuality(data):
         print(u'Received temperature: {} at {}'.format(data, ts))
         doc = db.collection('sensorReadings').document(str(ts).split(".")[0]) .set({
             'value': data,
@@ -58,6 +61,35 @@ def saveData(d):
             'timestamp': ts
         })
 
+    aTime = []
+    aTemp = []
+
+    nowTS = datetime.datetime.now().timestamp() * 1000
+    now = datetime.datetime.now()
+    minsAgoTS = now - datetime.timedelta(minutes=25).timestamp() * 1000
+    minsAgo = now - datetime.timedelta(minutes=25)
+
+    for d in range(5):
+        docs = db.collection('usageData').where(u'timeTurnedOn', u'>=', minsAgoTS).get()
+
+        usedTime = 0
+        for doc in docs:
+            usedTime = usedTime + (now - doc.to_dict()['timeTurnedOn'])/1000  # Agrega los segundos que llevan encendidos
+        # Busca dispositvos que se encendieron hace mas de 5 minutos y siguen encendidos
+        docs = db.collection('portstates').where(u'state', u'==', False).where(u'lastTimeOn', u'<=', nowTS).get()
+        for doc in docs:
+            usedTime = usedTime + 5 # Suma los 5 minutos que llevan encendidos
+    
+        aTime.append(usedTime)
+
+        docs2 = db.collection('sensorReadings').where(u'timestamp', u'>=', minsAgo).get()
+        aTemp.append(docs2[0].to_dict()['value']) 
+
+        minsAgoTS = minsAgo + 300000
+        minsAgo = now + datetime.timedelta(minutes=5)
+
+
+    inferency(aTime, aTemp)
 
 def dataQuality(data):
     docs = db.collection('sensorReadings').get()
@@ -94,6 +126,25 @@ def sendAlert(data, ts):
     %s
     """ % (sent_from, ", ".join(to), subject, body)
 
+    serverToken = 'AAAAV8NxifI:APA91bGTGjeJSTDyRZS8W5ZdMCr15gWYEE1LHCUaggtJ31uPGGpt2YSe7N32TgSVlBRqwZ70srvFAbqdqvJpPkiQ0Z9yNtmBqV3YxVErASjuUbmM-oUSI55H8wFNYnNM2NqbKu_JF6gt'
+    deviceToken = 'd9pGs_jwRlmHCyb0cxuK9x:APA91bEO0RFAVodgXubymRTvxeNS7yAAsfz6Z2_Euo3toyKXBo2JkpmNBdHUPyREn-vyPenpQr6AApeiJld61nW9JFvJ98TolhW9NlMzNv9U0RpxSnIv6LrMvrOimBx4hb3YMHL0JTDx'
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'key=' + serverToken,
+      }
+
+    body = {
+          'notification': {'title': 'Tu Savenergizer se esta sobrecalentando',
+                            'body': 'Hola!\n Tu Savenergizar se esta sobrecalentando y se ha detectado que la temperatura subio hasta {}C hace unos segundos. Por favor revisa tu dispositivo y si el calentamiento continua, desconectalo por unos minutos o hasta que su temperatura disminuya\n\n - El equipo de Savenergizer'.format(data)
+                            },
+          'to':
+              deviceToken,
+          'priority': 'high',
+        #   'data': dataPayLoad,
+        }
+    response = requests.post("https://fcm.googleapis.com/fcm/send",headers = headers, data=json.dumps(body))
+
     try:
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.ehlo()
@@ -105,6 +156,29 @@ def sendAlert(data, ts):
     except Exception as e:
         print('Ocurrió el siguiente error: {}'.format(e))
 
+#Inferencia - temperatura según el tiempo activo
+def inferency(aTime, aTemp):
+    
+    x = np.array(aTime).reshape((-1, 1))
+    y = np.array(aTemp)
+
+    model = LinearRegression().fit(x, y)
+
+    r_sq = model.score(x, y)
+
+    longitudArregloTiempo = len(aTime)
+    horaSiguiente = aTime[longitudArregloTiempo-1]
+    xN = []
+    
+    for d in range (5):
+        horaSiguiente = horaSiguiente + 1
+        xN.append(horaSiguiente)
+
+    xNuevas = np.array(xN).reshape((-1, 1))
+    yNuevas = model.predict(xNuevas)
+
+    for x in range(len(xNuevas)):
+        print('Hora: {} predicción de temperatura: {temperatura:.1f}°'.format(xNuevas[x], temperatura = yNuevas[x]))
 
 ################################
 ##### MQTT FUNCTIONS ###########
