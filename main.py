@@ -3,7 +3,6 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import statistics
 import smtplib
-import datetime
 import json
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -51,7 +50,7 @@ def saveData(d):
             'value': data,
             'timestamp': ts
         })
-        if data > 50:
+        if data > 40:
             print("Sending alert email")
             sendAlert(data, ts)
     else:
@@ -62,37 +61,38 @@ def saveData(d):
         })
 
     aTime = []
-aTemp = []
+    aTemp = []
 
-nowTS = datetime.datetime.now().timestamp() * 1000
-now = datetime.datetime.now()
-minsAgo = now - datetime.timedelta(minutes=25)
-minsAgoTS = minsAgo.timestamp() * 1000
+    nowTS = datetime.datetime.now().timestamp() * 1000
+    now = datetime.datetime.now()
+    minsAgo = now - datetime.timedelta(minutes=25)
+    minsAgoTS = minsAgo.timestamp() * 1000
 
-for d in range(5):
-    docs = db.collection('usageData').where(
-        u'timeTurnedOn', u'>=', minsAgoTS).get()
+    for d in range(5):
+        docs = db.collection('usageData').where(
+            u'timeTurnedOn', u'>=', minsAgoTS).get()
 
-    usedTime = 0
-    for doc in docs:
-        # Agrega los segundos que llevan encendidos
-        usedTime = usedTime + (nowTS - doc.to_dict()['timeTurnedOn'])/1000
-    # Busca dispositvos que se encendieron hace mas de 5 minutos y siguen encendidos
-    docs = db.collection('portstates').where(
-        u'state', u'==', False).where(u'lastTimeOn', u'<=', nowTS).get()
-    for doc in docs:
-        usedTime = usedTime + 5  # Suma los 5 minutos que llevan encendidos
+        usedTime = 0
+        for doc in docs:
+            # Agrega los segundos que llevan encendidos
+            usedTime = usedTime + (nowTS - doc.to_dict()['timeTurnedOn'])/1000
+        # Busca dispositvos que se encendieron hace mas de 5 minutos y siguen encendidos
+        docs = db.collection('portstates').where(
+            u'state', u'==', False).where(u'lastTimeOn', u'<=', nowTS).get()
+        for doc in docs:
+            usedTime = usedTime + 5  # Suma los 5 minutos que llevan encendidos
 
-    aTime.append(usedTime)
+        aTime.append(usedTime)
 
-    docs2 = db.collection('sensorReadings').where(
-        u'timestamp', u'<=', minsAgo).get()
-    aTemp.append(docs2[0].to_dict()['value'])
+        docs2 = db.collection('sensorReadings').where(
+            u'timestamp', u'<=', minsAgo).get()
+        aTemp.append(docs2[0].to_dict()['value'])
 
-    minsAgoTS = minsAgoTS + 300000
-    minsAgo = minsAgo + datetime.timedelta(minutes=5)
+        minsAgoTS = minsAgoTS + 300000
+        minsAgo = minsAgo + datetime.timedelta(minutes=5)
 
-inferency(aTime, aTemp)
+    inferency(aTime, aTemp)
+
 
 def dataQuality(data):
     docs = db.collection('sensorReadings').get()
@@ -130,7 +130,7 @@ def sendAlert(data, ts):
     """ % (sent_from, ", ".join(to), subject, body)
 
     serverToken = 'AAAAV8NxifI:APA91bGTGjeJSTDyRZS8W5ZdMCr15gWYEE1LHCUaggtJ31uPGGpt2YSe7N32TgSVlBRqwZ70srvFAbqdqvJpPkiQ0Z9yNtmBqV3YxVErASjuUbmM-oUSI55H8wFNYnNM2NqbKu_JF6gt'
-    deviceToken = 'd9pGs_jwRlmHCyb0cxuK9x:APA91bEO0RFAVodgXubymRTvxeNS7yAAsfz6Z2_Euo3toyKXBo2JkpmNBdHUPyREn-vyPenpQr6AApeiJld61nW9JFvJ98TolhW9NlMzNv9U0RpxSnIv6LrMvrOimBx4hb3YMHL0JTDx'
+    deviceToken = '5QiZ5z_SByv-gJ6BlzxBA:APA91bElDEStTDo6LAh9d_Ubmi1s0LSbHD7Juu9b_eq1tJ3DBfGaS3yiqqkUsi3kHASkvA6VJf25MaLh3HDIDsWL0hTZMKkfEmOxdoUSMMfDgOaBPOX6fWwMU-7XvUSGfrU4S_o8ZAcw'
 
     headers = {
         'Content-Type': 'application/json',
@@ -183,6 +183,9 @@ def inferency(aTime, aTemp):
     for x in range(len(xNuevas)):
         print('Hora: {} predicción de temperatura: {temperatura:.1f}°'.format(xNuevas[x], temperatura = yNuevas[x]))
 
+    client.publish("inferences", "{temperatura:.1f}".format(temperatura = yNuevas[0]))
+
+
 ################################
 ##### MQTT FUNCTIONS ###########
 ################################
@@ -201,19 +204,12 @@ def on_subscribe(client, obj, mid, granted_qos):
     print("Subscribed: " + str(client))
 
 
-print("perra")
 db.collection(u'portStates').on_snapshot(onPortStateChange)
 client.on_connect = on_connect
 client.on_message = on_message
 client.on_subscribe = on_subscribe
-#client.on_publish = on_publish
+client.on_publish = on_publish
 client.connect("localhost", 1883, 60)
-client.publish("states", "port1-on")
-client.publish("states", "port2-on")
-client.publish("states", "port3-on")
-client.publish("states", "port4-on")
-client.publish("states", "port5-on")
-client.publish("states", "port6-on")
 client.loop_forever()
 
 
